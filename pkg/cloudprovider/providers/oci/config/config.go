@@ -15,6 +15,7 @@
 package config
 
 import (
+	"fmt"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
 	"io"
 	"os"
@@ -144,6 +145,10 @@ type Config struct {
 
 	// When set to true, clients will use an instance principal configuration provider and ignore auth fields.
 	UseInstancePrincipals bool `yaml:"useInstancePrincipals"`
+
+	// When set to true, clients will use OKE workload identity and ignore auth fields.
+	UseWorkloadIdentity bool `yaml:"useWorkloadIdentity"`
+
 	// CompartmentID is the OCID of the Compartment within which the cluster
 	// resides.
 	CompartmentID string `yaml:"compartment"`
@@ -274,6 +279,21 @@ func NewConfigurationProvider(cfg *Config) (common.ConfigurationProvider, error)
 			cp, err := auth.InstancePrincipalConfigurationProvider()
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to instantiate InstancePrincipalConfigurationProvider")
+			}
+			return cp, nil
+		}
+
+		if cfg.UseWorkloadIdentity {
+			// OCI SDK requires specific, dynamic environment variables for workload identity.
+			if err := os.Setenv(auth.ResourcePrincipalVersionEnvVar, auth.ResourcePrincipalVersion2_2); err != nil {
+				return nil, fmt.Errorf("unable to set OCI SDK environment variable: %s: %w", auth.ResourcePrincipalVersionEnvVar, err)
+			}
+			if err := os.Setenv(auth.ResourcePrincipalRegionEnvVar, cfg.RegionKey); err != nil {
+				return nil, fmt.Errorf("unable to set OCI SDK environment variable: %s: %w", auth.ResourcePrincipalRegionEnvVar, err)
+			}
+			cp, err := auth.OkeWorkloadIdentityConfigurationProvider()
+			if err != nil {
+				return nil, fmt.Errorf("unable to load workload-identity auth method. %v", err)
 			}
 			return cp, nil
 		}
