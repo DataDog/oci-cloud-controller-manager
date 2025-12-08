@@ -1,0 +1,46 @@
+include: https://gitlab-templates.ddbuild.io/compute-delivery/v2/compute-delivery.yml
+
+default:
+  image: registry.ddbuild.io/ci/compute-delivery:latest
+  tags: ["arch:arm64"]
+
+build-docker-image:
+  image: registry.ddbuild.io/images/nydus:v2.3.7
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  variables:
+    BASE_IMAGE: registry.ddbuild.io/images/base/gbi-distroless-nossl-fips:release
+    BUILDER_IMAGE: registry.ddbuild.io/images/mirror/golang:1.25.3
+  script: |
+    IMAGE_TAG="${CI_COMMIT_TAG:-test}"
+    IMAGE_REF="registry.ddbuild.io/oci-cloud-controller-manager:${IMAGE_TAG}"
+    METADATA_FILE=$(mktemp)
+    docker buildx build --platform linux/amd64,linux/arm64 \
+      --tag "${IMAGE_REF}" \
+      --file Dockerfile.datadog \
+      --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+      --build-arg BUILDER_IMAGE="${BUILDER_IMAGE}" \
+      --build-arg VERSION="${IMAGE_TAG}" \
+      --build-arg BUILD="${CI_COMMIT_SHA}" \
+      --label target=prod \
+      --label CI_PIPELINE_ID="${CI_PIPELINE_ID}" \
+      --label CI_JOB_ID="${CI_JOB_ID}" \
+      --metadata-file "${METADATA_FILE}" \
+      --output type=image,push=true,compression=zstd,force-compression=true,oci-mediatypes=true \
+      .
+
+    ddsign sign "${IMAGE_REF}" --docker-metadata-file "${METADATA_FILE}"
+    nydus-convert "${IMAGE_REF}"
+
+check:
+  script:
+    # Note: we don't run 'make golint' as there's a lot of golint violations, those should be fixed upstream before we can enable this check here
+    - make gofmt govet
+
+test:
+  variables:
+    KUBERNETES_MEMORY_REQUEST: 32Gi
+    KUBERNETES_MEMORY_LIMIT: 32Gi
+  script:
+    - go test ./cmd/... ./pkg/...
