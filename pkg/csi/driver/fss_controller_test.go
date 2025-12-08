@@ -543,12 +543,12 @@ func TestFSSControllerDriver_CreateVolume(t *testing.T) {
 			wantErr: errors.New("Neither Mount Target Ocid nor Mount Target Subnet Ocid provided in storage class"),
 		},
 		{
-			name: "Error when invalid JSON string provided for mount target NSGs",
+			name:   "Error when invalid JSON string provided for mount target NSGs",
 			fields: fields{},
 			args: args{
 				ctx: context.Background(),
 				req: &csi.CreateVolumeRequest{
-					Name: "ut-volume",
+					Name:       "ut-volume",
 					Parameters: map[string]string{"availabilityDomain": "US-ASHBURN-AD-1", "mountTargetSubnetOcid": "oc1.subnet.xxxx", "nsgOcids": ""},
 					VolumeCapabilities: []*csi.VolumeCapability{{
 						AccessMode: &csi.VolumeCapability_AccessMode{
@@ -557,7 +557,7 @@ func TestFSSControllerDriver_CreateVolume(t *testing.T) {
 					}},
 				},
 			},
-			want: nil,
+			want:    nil,
 			wantErr: errors.New("Failed to parse nsgOcids provided in storage class. Please provide valid input."),
 		},
 		{
