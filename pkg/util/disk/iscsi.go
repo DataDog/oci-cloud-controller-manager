@@ -90,7 +90,7 @@ type Interface interface {
 
 	DeviceOpened(pathname string) (bool, error)
 
-	IsMounted(devicePath string, targetPath string)	(bool, error)
+	IsMounted(devicePath string, targetPath string) (bool, error)
 
 	// updates the queue depth for iSCSI target
 	UpdateQueueDepth() error
@@ -494,7 +494,7 @@ func (c *iSCSIMounter) IsMounted(devicePath string, targetPath string) (bool, er
 	var diskByPath string
 	notMnt, err := c.mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil {
-		if os.IsNotExist(err){
+		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to check if %s is a mount point: %v", targetPath, err)

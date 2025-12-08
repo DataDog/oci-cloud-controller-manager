@@ -104,7 +104,7 @@ func (c *pvMounter) DeviceOpened(pathname string) (bool, error) {
 func (c *pvMounter) IsMounted(devicePath string, targetPath string) (bool, error) {
 	notMnt, err := c.mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil {
-		if os.IsNotExist(err){
+		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to check if %s is a mount point: %v", targetPath, err)

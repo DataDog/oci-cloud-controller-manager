@@ -99,7 +99,7 @@ func (c *client) GetBootVolume(ctx context.Context, id string) (*core.BootVolume
 	}
 
 	resp, err := c.bs.GetBootVolume(ctx, core.GetBootVolumeRequest{
-		BootVolumeId:        &id,
+		BootVolumeId:    &id,
 		RequestMetadata: c.requestMetadata})
 	incRequestCounter(err, getVerb, volumeResource)
 
