@@ -32,11 +32,12 @@ import (
 var TestNonRetryableError = errors.New("some non-retryable error")
 
 func TestLB_AwaitWorkRequest(t *testing.T) {
-	var tests = map[string]struct {
+	type testCase struct {
 		skip         bool // set true to skip a test-case
 		loadbalancer loadbalancerClientStruct
 		wantErr      error
-	}{
+	}
+	var tests = map[string]*testCase{
 		"getWorkRequestTimedOut": {
 			skip: true,
 			loadbalancer: loadbalancerClientStruct{

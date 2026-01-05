@@ -31,11 +31,12 @@ import (
 )
 
 func TestNLB_AwaitWorkRequest(t *testing.T) {
-	var tests = map[string]struct {
+	type testCase struct {
 		skip         bool // set true to skip a test-case
 		loadbalancer networkLoadbalancer
 		wantErr      error
-	}{
+	}
+	var tests = map[string]*testCase{
 		"getWorkRequestTimedOut": {
 			skip: true,
 			loadbalancer: networkLoadbalancer{
