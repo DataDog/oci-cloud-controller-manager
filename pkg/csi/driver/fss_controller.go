@@ -252,8 +252,8 @@ func checkForSupportedVolumeCapabilities(volumeCaps []*csi.VolumeCapability) err
 		if blk := cap.GetBlock(); blk != nil {
 			return fmt.Errorf("driver does not support block volumes")
 		}
-		for _, c := range fssSupportedVolumeCapabilities {
-			if c.GetMode() == cap.AccessMode.GetMode() {
+		for i := range fssSupportedVolumeCapabilities {
+			if fssSupportedVolumeCapabilities[i].GetMode() == cap.AccessMode.GetMode() {
 				return nil
 			}
 		}
