@@ -67,6 +67,8 @@ type computeClient interface {
 	GetInstance(ctx context.Context, request core.GetInstanceRequest) (response core.GetInstanceResponse, err error)
 	ListInstances(ctx context.Context, request core.ListInstancesRequest) (response core.ListInstancesResponse, err error)
 	ListVnicAttachments(ctx context.Context, request core.ListVnicAttachmentsRequest) (response core.ListVnicAttachmentsResponse, err error)
+	AttachVnic(ctx context.Context, request core.AttachVnicRequest) (response core.AttachVnicResponse, err error)
+	DetachVnic(ctx context.Context, request core.DetachVnicRequest) (response core.DetachVnicResponse, err error)
 
 	GetVolumeAttachment(ctx context.Context, request core.GetVolumeAttachmentRequest) (response core.GetVolumeAttachmentResponse, err error)
 	ListVolumeAttachments(ctx context.Context, request core.ListVolumeAttachmentsRequest) (response core.ListVolumeAttachmentsResponse, err error)
