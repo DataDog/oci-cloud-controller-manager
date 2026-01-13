@@ -33,6 +33,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 
 	providercfg "github.com/oracle/oci-cloud-controller-manager/pkg/cloudprovider/providers/oci/config"
+	"github.com/oracle/oci-cloud-controller-manager/pkg/cloudprovider/providers/oci/ipam"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/metrics"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/client"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
@@ -192,6 +193,31 @@ func (cp *CloudProvider) Initialize(clientBuilder cloudprovider.ControllerClient
 
 	go nodeInfoController.Run(wait.NeverStop)
 
+	// Initialize IPAM controller if enabled
+	if cp.config.IPAM != nil && cp.config.IPAM.EnableIPAM {
+		cp.logger.Info("Initializing OCI IPAM controller")
+
+		ipamController := ipam.NewCloudAllocator(
+			cp.kubeclient,
+			cp.client,
+			nodeInformer,
+			cp.config.IPAM.NodeCIDRMaskSizeIPv4,
+			cp.config.IPAM.PodSubnetIDs,
+			cp.config.IPAM.AutoAttachPodVNIC,
+			cp.config.IPAM.PodVNICDisplayName,
+			cp.logger,
+		)
+
+		// Start IPAM controller with 2 workers
+		go func() {
+			if err := ipamController.Run(context.Background(), 2); err != nil {
+				cp.logger.With("error", err).Error("IPAM controller exited with error")
+			}
+		}()
+
+		cp.logger.Info("OCI IPAM controller started")
+	}
+
 	cp.logger.Info("Waiting for node informer cache to sync")
 	if !cache.WaitForCacheSync(wait.NeverStop, nodeInformer.Informer().HasSynced, serviceInformer.Informer().HasSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for informers to sync"))
@@ -263,6 +289,10 @@ func (cp *CloudProvider) Clusters() (cloudprovider.Clusters, bool) {
 // Routes returns a routes interface along with whether the interface is
 // supported.
 func (cp *CloudProvider) Routes() (cloudprovider.Routes, bool) {
+	if cp.config.IPAM != nil && cp.config.IPAM.EnableIPAM {
+		cp.logger.Debug("Routes interface is supported (IPAM enabled)")
+		return &routes{cp: cp}, true
+	}
 	return nil, false
 }
 

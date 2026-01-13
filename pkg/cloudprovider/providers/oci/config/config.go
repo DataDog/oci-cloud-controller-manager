@@ -130,6 +130,33 @@ type InitialTags struct {
 	Common       *TagConfig `yaml:"common"`
 }
 
+// IPAMConfig holds the configuration options for IPAM (IP Address Management)
+// support in the OCI CCM.
+type IPAMConfig struct {
+	// EnableIPAM enables IPAM support in the CCM. When enabled, the CCM will
+	// allocate pod CIDRs to nodes and manage routing via secondary VNICs.
+	EnableIPAM bool `yaml:"enableIPAM"`
+
+	// PodSubnetIDs maps availability domain names to pod subnet OCIDs.
+	// Each node in an AD will have a secondary VNIC attached in the corresponding pod subnet.
+	// Example: {"zkJl:US-ASHBURN-AD-1": "ocid1.subnet.oc1.iad.aaa..."}
+	PodSubnetIDs map[string]string `yaml:"podSubnetIds"`
+
+	// NodeCIDRMaskSizeIPv4 is the mask size for IPv4 node CIDRs (default: 24).
+	// This determines how large each node's pod CIDR will be.
+	// For example, 24 means each node gets a /24 (256 IPs) from the pod subnet.
+	NodeCIDRMaskSizeIPv4 int `yaml:"nodeCIDRMaskSizeIPv4"`
+
+	// AutoAttachPodVNIC if true, CCM will automatically attach secondary VNICs
+	// to nodes in pod subnets. If false, assumes VNICs are pre-attached.
+	AutoAttachPodVNIC bool `yaml:"autoAttachPodVNIC"`
+
+	// PodVNICDisplayName is the display name pattern for pod VNICs (default: "pod-vnic").
+	// Used to identify pod VNICs when AutoAttachPodVNIC is enabled or when validating
+	// existing VNIC attachments.
+	PodVNICDisplayName string `yaml:"podVNICDisplayName"`
+}
+
 // Config holds the OCI cloud-provider config passed to Kubernetes components
 // via the --cloud-config option.
 type Config struct {
@@ -140,6 +167,8 @@ type Config struct {
 	Metrics *MetricsConfig `yaml:"metrics"`
 	// Tags to be added to managed LB and BV
 	Tags *InitialTags `yaml:"tags"`
+	// IPAM configuration for pod CIDR allocation and management
+	IPAM *IPAMConfig `yaml:"ipam"`
 
 	RegionKey string `yaml:"regionKey"`
 
@@ -175,6 +204,21 @@ func (c *LoadBalancerConfig) Complete() {
 	}
 }
 
+// Complete the IPAM config applying defaults / overrides.
+func (c *IPAMConfig) Complete() {
+	if !c.EnableIPAM {
+		return
+	}
+	// Set default node CIDR mask size if not specified
+	if c.NodeCIDRMaskSizeIPv4 == 0 {
+		c.NodeCIDRMaskSizeIPv4 = 24 // Default to /24 per node (256 IPs)
+	}
+	// Set default pod VNIC display name if not specified
+	if len(c.PodVNICDisplayName) == 0 {
+		c.PodVNICDisplayName = "pod-vnic"
+	}
+}
+
 // Complete the authentication config applying defaults / overrides.
 func (c *AuthConfig) Complete() {
 	if len(c.Passphrase) == 0 && len(c.PrivateKeyPassphrase) > 0 {
@@ -201,6 +245,9 @@ func (c *AuthConfig) Complete() {
 func (c *Config) Complete() {
 	if c.LoadBalancer != nil {
 		c.LoadBalancer.Complete()
+	}
+	if c.IPAM != nil {
+		c.IPAM.Complete()
 	}
 	c.Auth.Complete()
 	// Ensure backwards compatibility fields are set correctly.
