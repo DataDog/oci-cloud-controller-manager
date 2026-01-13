@@ -948,8 +948,12 @@ func (c *MockComputeClient) GetVnicAttachment(ctx context.Context, vnicAttachmen
 	return nil, nil
 }
 
-func (c *MockComputeClient) AttachVnic(ctx context.Context, instanceID, subnetID *string, nsgIds []*string, skipSourceDestCheck *bool) (response core.VnicAttachment, err error) {
-	return core.VnicAttachment{}, nil
+func (c *MockComputeClient) AttachVnic(ctx context.Context, instanceID, subnetID, displayName string) (*core.VnicAttachment, error) {
+	return &core.VnicAttachment{}, nil
+}
+
+func (c *MockComputeClient) DetachVnic(ctx context.Context, vnicAttachmentID string) error {
+	return nil
 }
 
 func (MockComputeClient) FindVolumeAttachment(ctx context.Context, compartmentID, volumeID string, instanceID *string) (core.VolumeAttachment, error) {
@@ -1017,7 +1021,7 @@ func (c *MockVirtualNetworkClient) ListPrivateIps(ctx context.Context, vnicId st
 	return nil, nil
 }
 
-func (c *MockVirtualNetworkClient) CreatePrivateIp(ctx context.Context, vnicID string) (*core.PrivateIp, error) {
+func (c *MockVirtualNetworkClient) CreatePrivateIp(ctx context.Context, vnicID string, cidrPrefixLength int) (*core.PrivateIp, error) {
 	return nil, nil
 }
 

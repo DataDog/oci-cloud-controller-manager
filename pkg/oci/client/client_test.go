@@ -166,6 +166,10 @@ func (c *mockComputeClient) AttachVnic(ctx context.Context, request core.AttachV
 	return core.AttachVnicResponse{}, nil
 }
 
+func (c *mockComputeClient) DetachVnic(ctx context.Context, request core.DetachVnicRequest) (response core.DetachVnicResponse, err error) {
+	return core.DetachVnicResponse{}, nil
+}
+
 func (c *mockComputeClient) GetVolumeAttachment(ctx context.Context, request core.GetVolumeAttachmentRequest) (response core.GetVolumeAttachmentResponse, err error) {
 	return core.GetVolumeAttachmentResponse{}, nil
 }
