@@ -222,6 +222,22 @@ func (cp *CloudProvider) Initialize(clientBuilder cloudprovider.ControllerClient
 		}
 	}
 
+	// Initialize IPAM controller if enabled
+	if cp.config.IPAM != nil && cp.config.IPAM.EnableIPAM {
+		cp.logger.Info("Initializing OCI IPAM controller")
+
+		ipamController := NewIPAMController(cp, nodeInformer)
+
+		// Start IPAM controller with 2 workers
+		go func() {
+			if err := ipamController.Run(context.Background(), 2); err != nil {
+				cp.logger.With("error", err).Error("IPAM controller exited with error")
+			}
+		}()
+
+		cp.logger.Info("OCI IPAM controller started")
+	}
+
 	cp.logger.Info("Waiting for node informer cache to sync")
 	if !cache.WaitForCacheSync(wait.NeverStop, nodeInformer.Informer().HasSynced, serviceInformer.Informer().HasSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for informers to sync"))

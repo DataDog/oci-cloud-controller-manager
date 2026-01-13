@@ -40,7 +40,7 @@ type NetworkingInterface interface {
 
 	ListPrivateIps(ctx context.Context, vnicId string) ([]core.PrivateIp, error)
 	GetPrivateIp(ctx context.Context, id string) (*core.PrivateIp, error)
-	CreatePrivateIp(ctx context.Context, vnicID string) (*core.PrivateIp, error)
+	CreatePrivateIp(ctx context.Context, vnicID string, cidrPrefixLength int) (*core.PrivateIp, error)
 	GetIpv6(ctx context.Context, id string) (*core.Ipv6, error)
 
 	GetPublicIpByIpAddress(ctx context.Context, id string) (*core.PublicIp, error)
@@ -300,17 +300,20 @@ func (c *client) ListPrivateIps(ctx context.Context, vnicId string) ([]core.Priv
 	return privateIps, nil
 }
 
-func (c *client) CreatePrivateIp(ctx context.Context, vnicId string) (*core.PrivateIp, error) {
+func (c *client) CreatePrivateIp(ctx context.Context, vnicId string, cidrPrefixLength int) (*core.PrivateIp, error) {
 	if !c.rateLimiter.Writer.TryAccept() {
 		return nil, RateLimitError(false, "CreatePrivateIp")
 	}
 	requestMetadata := getDefaultRequestMetadata(c.requestMetadata)
-	resp, err := c.network.CreatePrivateIp(ctx, core.CreatePrivateIpRequest{
+	request := core.CreatePrivateIpRequest{
 		CreatePrivateIpDetails: core.CreatePrivateIpDetails{
-			VnicId: &vnicId,
+			VnicId:           &vnicId,
+			CidrPrefixLength: &cidrPrefixLength,
 		},
 		RequestMetadata: requestMetadata,
-	})
+	}
+
+	resp, err := c.network.CreatePrivateIp(ctx, request)
 	incRequestCounter(err, createVerb, privateIPResource)
 	if err != nil {
 		c.logger.With(vnicId).Infof("CreatePrivateIp failed %s", pointer.StringDeref(resp.OpcRequestId, ""))
