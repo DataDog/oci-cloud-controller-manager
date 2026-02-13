@@ -1,6 +1,6 @@
 module github.com/oracle/oci-cloud-controller-manager
 
-go 1.24.0
+go 1.25.7
 
 replace (
 	github.com/docker/distribution => github.com/docker/distribution v2.8.3+incompatible
