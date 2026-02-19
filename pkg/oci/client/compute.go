@@ -36,12 +36,6 @@ type ComputeInterface interface {
 
 	GetSecondaryVNICsForInstance(ctx context.Context, compartmentID, instanceID string) ([]*core.Vnic, error)
 
-	// AttachVnic attaches a secondary VNIC to an instance
-	AttachVnic(ctx context.Context, instanceID, subnetID, displayName string) (*core.VnicAttachment, error)
-
-	// DetachVnic detaches a VNIC from an instance
-	DetachVnic(ctx context.Context, vnicAttachmentID string) error
-
 	VolumeAttachmentInterface
 }
 
@@ -340,62 +334,4 @@ func getNonTerminalInstances(instances []core.Instance) []core.Instance {
 		}
 	}
 	return result
-}
-
-// AttachVnic attaches a secondary VNIC to an instance in the specified subnet.
-func (c *client) AttachVnic(ctx context.Context, instanceID, subnetID, displayName string) (*core.VnicAttachment, error) {
-	logger := c.logger.With("instanceID", instanceID, "subnetID", subnetID)
-	logger.Debug("Attaching VNIC to instance")
-
-	if !c.rateLimiter.Writer.TryAccept() {
-		return nil, RateLimitError(true, "AttachVnic")
-	}
-
-	// Create the VNIC attachment
-	resp, err := c.compute.AttachVnic(ctx, core.AttachVnicRequest{
-		AttachVnicDetails: core.AttachVnicDetails{
-			InstanceId:  &instanceID,
-			DisplayName: &displayName,
-			CreateVnicDetails: &core.CreateVnicDetails{
-				SubnetId:    &subnetID,
-				DisplayName: &displayName,
-				// Add freeform tag to identify CCM-managed VNICs
-				FreeformTags: map[string]string{
-					"oci-ccm-managed": "pod-vnic",
-				},
-			},
-		},
-		RequestMetadata: c.requestMetadata,
-	})
-	incRequestCounter(err, createVerb, vnicAttachmentResource)
-
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	logger.With("vnicAttachmentID", *resp.Id).Info("Successfully initiated VNIC attachment")
-	return &resp.VnicAttachment, nil
-}
-
-// DetachVnic detaches a VNIC from an instance.
-func (c *client) DetachVnic(ctx context.Context, vnicAttachmentID string) error {
-	logger := c.logger.With("vnicAttachmentID", vnicAttachmentID)
-	logger.Debug("Detaching VNIC from instance")
-
-	if !c.rateLimiter.Writer.TryAccept() {
-		return RateLimitError(true, "DetachVnic")
-	}
-
-	_, err := c.compute.DetachVnic(ctx, core.DetachVnicRequest{
-		VnicAttachmentId: &vnicAttachmentID,
-		RequestMetadata:  c.requestMetadata,
-	})
-	incRequestCounter(err, deleteVerb, vnicAttachmentResource)
-
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	logger.Info("Successfully initiated VNIC detachment")
-	return nil
 }
