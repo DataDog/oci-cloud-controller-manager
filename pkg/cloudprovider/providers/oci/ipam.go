@@ -17,6 +17,7 @@ package oci
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -234,27 +235,37 @@ func (ic *IPAMController) allocatePodCIDRForNode(ctx context.Context, node *v1.N
 		return "", errors.Wrap(err, "failed to map provider ID to instance ID")
 	}
 
-	// Get compartment ID for the node
-	compartmentID, err := ic.cp.getCompartmentIDByInstanceID(instanceID)
+	// Fetch the OCI instance directly to get compartment ID and availability domain,
+	// avoiding a dependency on node annotations/labels set later by the node controller.
+	instance, err := ic.cp.client.Compute().GetInstance(ctx, instanceID)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to get compartment ID")
+		return "", errors.Wrap(err, "failed to get OCI instance")
 	}
 
-	podVNIC, err := ic.getPodVNICForNode(ctx, instanceID, compartmentID, node)
+	podVNIC, err := ic.getPodVNICForNode(ctx, instanceID, *instance.CompartmentId, *instance.AvailabilityDomain)
 	if err != nil || podVNIC == nil {
 		return "", errors.Wrap(err, "failed to get pod VNIC for node")
 	}
 
 	privateIP, err := ic.cp.client.Networking(nil).CreatePrivateIp(ctx, *podVNIC.Id, ic.cp.config.IPAM.NodeCIDRMaskSizeIPv4)
-	if err != nil || privateIP.Ipv4SubnetCidrAtCreation == nil {
+	if err != nil {
 		return "", errors.Wrap(err, "failed to associate CIDR to node secondary VNIC")
 	}
+	if privateIP.IpAddress == nil || privateIP.CidrPrefixLength == nil {
+		return "", errors.New("OCI returned private IP without address or CIDR prefix length")
+	}
 
-	if err = ic.updateNodePodCIDR(ctx, node, *privateIP.Ipv4SubnetCidrAtCreation); err != nil {
+	addr, err := netip.ParseAddr(*privateIP.IpAddress)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to parse private IP address %s", *privateIP.IpAddress)
+	}
+	podCIDR := netip.PrefixFrom(addr, *privateIP.CidrPrefixLength).Masked().String()
+
+	if err = ic.updateNodePodCIDR(ctx, node, podCIDR); err != nil {
 		return "", errors.Wrap(err, "failed to update node pod CIDR for node secondary VNIC")
 	}
 
-	return *privateIP.Ipv4SubnetCidrAtCreation, nil
+	return podCIDR, nil
 }
 
 // updateNodePodCIDR updates the node's Spec.PodCIDR field and sets the NodeNetworkUnavailable condition to False.
@@ -380,36 +391,28 @@ func getInstanceIDFromProviderID(providerID string) (string, error) {
 
 // getPodVNICForNode finds the secondary VNIC in a pod subnet for the given node.
 // Returns nil if no pod VNIC is found.
-func (ic *IPAMController) getPodVNICForNode(ctx context.Context, instanceID, compartmentID string, node *v1.Node) (*core.Vnic, error) {
-	// Get availability domain from node labels (set by kubelet/cloud provider)
-	// Standard Kubernetes topology label
-	availabilityDomain, ok := node.Labels["topology.kubernetes.io/zone"]
-	if !ok {
-		// Fall back to deprecated label
-		availabilityDomain, ok = node.Labels["failure-domain.beta.kubernetes.io/zone"]
-		if !ok {
-			return nil, errors.New("node does not have availability domain label (topology.kubernetes.io/zone)")
+func (ic *IPAMController) getPodVNICForNode(ctx context.Context, instanceID, compartmentID, availabilityDomain string) (*core.Vnic, error) {
+	// OCI returns ADs in the full form "realm:AD-NAME" (e.g. "yLOf:EU-MADRID-1-AD-1").
+	// The config may use either form, so normalize both sides to the short form for lookup.
+	adShortName := func(ad string) string {
+		if i := strings.LastIndex(ad, ":"); i >= 0 {
+			return ad[i+1:]
+		}
+		return ad
+	}
+	shortAD := adShortName(availabilityDomain)
+
+	var podSubnetID string
+	found := false
+	for configAD, configSubnetID := range ic.cp.config.IPAM.PodSubnetIDs {
+		if adShortName(configAD) == shortAD {
+			podSubnetID = configSubnetID
+			found = true
+			break
 		}
 	}
-
-	// Get the pod subnet ID for this availability domain
-	// Try exact match first
-	podSubnetID, ok := ic.cp.config.IPAM.PodSubnetIDs[availabilityDomain]
-	if !ok {
-		// If not found, try with realm prefix (format: "realm:AD-NAME")
-		// This handles cases where config uses full format but label has short format
-		for configAD, configSubnetID := range ic.cp.config.IPAM.PodSubnetIDs {
-			// Check if the config AD ends with the node's AD (after the colon)
-			if parts := strings.Split(configAD, ":"); len(parts) == 2 && parts[1] == availabilityDomain {
-				podSubnetID = configSubnetID
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			// No pod subnet configured for this AD
-			return nil, errors.Errorf("no pod subnet configured for availability domain %s", availabilityDomain)
-		}
+	if !found {
+		return nil, errors.Errorf("no pod subnet configured for availability domain %s", availabilityDomain)
 	}
 
 	// Get secondary VNICs for the instance

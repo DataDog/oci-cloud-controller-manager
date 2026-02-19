@@ -1021,7 +1021,7 @@ func (c *MockVirtualNetworkClient) ListPrivateIps(ctx context.Context, vnicId st
 	return nil, nil
 }
 
-func (c *MockVirtualNetworkClient) CreatePrivateIp(ctx context.Context, vnicID string) (*core.PrivateIp, error) {
+func (c *MockVirtualNetworkClient) CreatePrivateIp(ctx context.Context, vnicID string, cidrPrefixLength int) (*core.PrivateIp, error) {
 	return nil, nil
 }
 

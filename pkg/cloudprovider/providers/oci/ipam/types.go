@@ -29,9 +29,6 @@ type SubnetCIDRAllocator struct {
 
 	// NodeMask is the mask size for individual node CIDRs (e.g., 24 for /24)
 	NodeMask int
-
-	// CIDRSet manages the actual CIDR allocation bitmap
-	CIDRSet *cidrSet
 }
 
 // NodeCIDRAllocation represents a CIDR allocation for a specific node.
