@@ -33,7 +33,6 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 
 	providercfg "github.com/oracle/oci-cloud-controller-manager/pkg/cloudprovider/providers/oci/config"
-	"github.com/oracle/oci-cloud-controller-manager/pkg/cloudprovider/providers/oci/ipam"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/metrics"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/client"
 	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
@@ -197,16 +196,7 @@ func (cp *CloudProvider) Initialize(clientBuilder cloudprovider.ControllerClient
 	if cp.config.IPAM != nil && cp.config.IPAM.EnableIPAM {
 		cp.logger.Info("Initializing OCI IPAM controller")
 
-		ipamController := ipam.NewCloudAllocator(
-			cp.kubeclient,
-			cp.client,
-			nodeInformer,
-			cp.config.IPAM.NodeCIDRMaskSizeIPv4,
-			cp.config.IPAM.PodSubnetIDs,
-			cp.config.IPAM.AutoAttachPodVNIC,
-			cp.config.IPAM.PodVNICDisplayName,
-			cp.logger,
-		)
+		ipamController := NewIPAMController(cp, nodeInformer)
 
 		// Start IPAM controller with 2 workers
 		go func() {
@@ -289,10 +279,6 @@ func (cp *CloudProvider) Clusters() (cloudprovider.Clusters, bool) {
 // Routes returns a routes interface along with whether the interface is
 // supported.
 func (cp *CloudProvider) Routes() (cloudprovider.Routes, bool) {
-	if cp.config.IPAM != nil && cp.config.IPAM.EnableIPAM {
-		cp.logger.Debug("Routes interface is supported (IPAM enabled)")
-		return &routes{cp: cp}, true
-	}
 	return nil, false
 }
 
