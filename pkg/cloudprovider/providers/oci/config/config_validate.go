@@ -15,6 +15,8 @@
 package config
 
 import (
+	"os"
+
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -25,6 +27,9 @@ func validateAuthConfig(c *AuthConfig, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if c == nil {
 		return append(allErrs, field.Required(fldPath, ""))
+	}
+	if c.PrivateKey != "" && c.PrivateKeyFile != "" {
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("key_file"), "key_file cannot be set when key is already provided"))
 	}
 	checkFields := map[string]string{
 		"region":      c.Region,
@@ -81,7 +86,7 @@ func ValidateConfig(c *Config) field.ErrorList {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("useWorkloadIdentity"), "useWorkloadIdentity and useInstancePrincipals cannot be used together"))
 	}
 
-	if !c.UseInstancePrincipals && !c.UseWorkloadIdentity {
+	if !c.UseInstancePrincipals && !c.UseWorkloadIdentity && os.Getenv("OCI_CONFIG_FILE") == "" {
 		allErrs = append(allErrs, validateAuthConfig(&c.Auth, field.NewPath("auth"))...)
 	}
 

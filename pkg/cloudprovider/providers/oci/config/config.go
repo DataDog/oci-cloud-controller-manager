@@ -16,9 +16,10 @@ package config
 
 import (
 	"fmt"
-	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
 	"io"
 	"os"
+
+	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
@@ -30,12 +31,13 @@ import (
 // AuthConfig holds the configuration required for communicating with the OCI
 // API.
 type AuthConfig struct {
-	Region      string `yaml:"region"`
-	TenancyID   string `yaml:"tenancy"`
-	UserID      string `yaml:"user"`
-	PrivateKey  string `yaml:"key"`
-	Fingerprint string `yaml:"fingerprint"`
-	Passphrase  string `yaml:"passphrase"`
+	Region         string `yaml:"region"`
+	TenancyID      string `yaml:"tenancy"`
+	UserID         string `yaml:"user"`
+	PrivateKey     string `yaml:"key"`
+	PrivateKeyFile string `yaml:"key_file"`
+	Fingerprint    string `yaml:"fingerprint"`
+	Passphrase     string `yaml:"passphrase"`
 
 	// Used by the flex driver for OCID expansion. This should be moved to top level
 	// as it doesn't strictly relate to OCI authentication.
@@ -225,6 +227,16 @@ func (c *AuthConfig) Complete() {
 		zap.S().Warn("cloud-provider config: auth.key_passphrase is DEPRECIATED and will be removed in a later release. Please set auth.passphrase instead.")
 		c.Passphrase = c.PrivateKeyPassphrase
 	}
+	// Resolve PrivateKeyFile into PrivateKey when PrivateKey is not set directly.
+	if c.PrivateKey == "" && c.PrivateKeyFile != "" {
+		keyBytes, err := os.ReadFile(c.PrivateKeyFile)
+		if err != nil {
+			zap.S().Errorf("cloud-provider config: failed to read private key file %q: %v", c.PrivateKeyFile, err)
+		} else {
+			c.PrivateKey = string(keyBytes)
+			c.PrivateKeyFile = ""
+		}
+	}
 	if c.Region == "" || c.CompartmentID == "" {
 		meta, err := c.metadataSvc.Get()
 		if err != nil {
@@ -341,6 +353,14 @@ func NewConfigurationProvider(cfg *Config) (common.ConfigurationProvider, error)
 			cp, err := auth.OkeWorkloadIdentityConfigurationProvider()
 			if err != nil {
 				return nil, fmt.Errorf("unable to load workload-identity auth method. %v", err)
+			}
+			return cp, nil
+		}
+
+		if ociConfigFile := os.Getenv("OCI_CONFIG_FILE"); ociConfigFile != "" {
+			cp, err := common.ConfigurationProviderFromFile(ociConfigFile, cfg.Auth.Passphrase)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load OCI config from %s: %w", ociConfigFile, err)
 			}
 			return cp, nil
 		}
