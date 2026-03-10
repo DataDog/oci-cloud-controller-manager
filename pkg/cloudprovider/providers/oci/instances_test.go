@@ -538,7 +538,7 @@ var (
 			Status: v1.PodStatus{
 				PodIP: "0.0.0.10",
 				PodIPs: []v1.PodIP{
-					{"0.0.0.10"},
+					{IP: "0.0.0.10"},
 				},
 			},
 		},
@@ -555,8 +555,8 @@ var (
 			Status: v1.PodStatus{
 				PodIP: "0.0.0.20",
 				PodIPs: []v1.PodIP{
-					{"0.0.0.20"},
-					{"2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
+					{IP: "0.0.0.20"},
+					{IP: "2001:0db8:85a3:0000:0000:8a2e:0370:7334"},
 				},
 			},
 		},
@@ -948,8 +948,12 @@ func (c *MockComputeClient) GetVnicAttachment(ctx context.Context, vnicAttachmen
 	return nil, nil
 }
 
-func (c *MockComputeClient) AttachVnic(ctx context.Context, instanceID, subnetID *string, nsgIds []*string, skipSourceDestCheck *bool) (response core.VnicAttachment, err error) {
-	return core.VnicAttachment{}, nil
+func (c *MockComputeClient) AttachVnic(ctx context.Context, instanceID, subnetID, displayName string) (*core.VnicAttachment, error) {
+	return &core.VnicAttachment{}, nil
+}
+
+func (c *MockComputeClient) DetachVnic(ctx context.Context, vnicAttachmentID string) error {
+	return nil
 }
 
 func (MockComputeClient) FindVolumeAttachment(ctx context.Context, compartmentID, volumeID string, instanceID *string) (core.VolumeAttachment, error) {

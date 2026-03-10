@@ -15,9 +15,11 @@
 package config
 
 import (
-	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
+	"fmt"
 	"io"
 	"os"
+
+	"github.com/oracle/oci-cloud-controller-manager/pkg/oci/instance/metadata"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
@@ -29,12 +31,13 @@ import (
 // AuthConfig holds the configuration required for communicating with the OCI
 // API.
 type AuthConfig struct {
-	Region      string `yaml:"region"`
-	TenancyID   string `yaml:"tenancy"`
-	UserID      string `yaml:"user"`
-	PrivateKey  string `yaml:"key"`
-	Fingerprint string `yaml:"fingerprint"`
-	Passphrase  string `yaml:"passphrase"`
+	Region         string `yaml:"region"`
+	TenancyID      string `yaml:"tenancy"`
+	UserID         string `yaml:"user"`
+	PrivateKey     string `yaml:"key"`
+	PrivateKeyFile string `yaml:"key_file"`
+	Fingerprint    string `yaml:"fingerprint"`
+	Passphrase     string `yaml:"passphrase"`
 
 	// Used by the flex driver for OCID expansion. This should be moved to top level
 	// as it doesn't strictly relate to OCI authentication.
@@ -129,6 +132,33 @@ type InitialTags struct {
 	Common       *TagConfig `yaml:"common"`
 }
 
+// IPAMConfig holds the configuration options for IPAM (IP Address Management)
+// support in the OCI CCM.
+type IPAMConfig struct {
+	// EnableIPAM enables IPAM support in the CCM. When enabled, the CCM will
+	// allocate pod CIDRs to nodes and manage routing via secondary VNICs.
+	EnableIPAM bool `yaml:"enableIPAM"`
+
+	// PodSubnetIDs maps availability domain names to pod subnet OCIDs.
+	// Each node in an AD will have a secondary VNIC attached in the corresponding pod subnet.
+	// Example: {"zkJl:US-ASHBURN-AD-1": "ocid1.subnet.oc1.iad.aaa..."}
+	PodSubnetIDs map[string]string `yaml:"podSubnetIds"`
+
+	// NodeCIDRMaskSizeIPv4 is the mask size for IPv4 node CIDRs (default: 24).
+	// This determines how large each node's pod CIDR will be.
+	// For example, 24 means each node gets a /24 (256 IPs) from the pod subnet.
+	NodeCIDRMaskSizeIPv4 int `yaml:"nodeCIDRMaskSizeIPv4"`
+
+	// AutoAttachPodVNIC if true, CCM will automatically attach secondary VNICs
+	// to nodes in pod subnets. If false, assumes VNICs are pre-attached.
+	AutoAttachPodVNIC bool `yaml:"autoAttachPodVNIC"`
+
+	// PodVNICDisplayName is the display name pattern for pod VNICs (default: "pod-vnic").
+	// Used to identify pod VNICs when AutoAttachPodVNIC is enabled or when validating
+	// existing VNIC attachments.
+	PodVNICDisplayName string `yaml:"podVNICDisplayName"`
+}
+
 // Config holds the OCI cloud-provider config passed to Kubernetes components
 // via the --cloud-config option.
 type Config struct {
@@ -139,11 +169,17 @@ type Config struct {
 	Metrics *MetricsConfig `yaml:"metrics"`
 	// Tags to be added to managed LB and BV
 	Tags *InitialTags `yaml:"tags"`
+	// IPAM configuration for pod CIDR allocation and management
+	IPAM *IPAMConfig `yaml:"ipam"`
 
 	RegionKey string `yaml:"regionKey"`
 
 	// When set to true, clients will use an instance principal configuration provider and ignore auth fields.
 	UseInstancePrincipals bool `yaml:"useInstancePrincipals"`
+
+	// When set to true, clients will use OKE workload identity and ignore auth fields.
+	UseWorkloadIdentity bool `yaml:"useWorkloadIdentity"`
+
 	// CompartmentID is the OCID of the Compartment within which the cluster
 	// resides.
 	CompartmentID string `yaml:"compartment"`
@@ -170,11 +206,36 @@ func (c *LoadBalancerConfig) Complete() {
 	}
 }
 
+// Complete the IPAM config applying defaults / overrides.
+func (c *IPAMConfig) Complete() {
+	if !c.EnableIPAM {
+		return
+	}
+	// Set default node CIDR mask size if not specified
+	if c.NodeCIDRMaskSizeIPv4 == 0 {
+		c.NodeCIDRMaskSizeIPv4 = 24 // Default to /24 per node (256 IPs)
+	}
+	// Set default pod VNIC display name if not specified
+	if len(c.PodVNICDisplayName) == 0 {
+		c.PodVNICDisplayName = "pod-vnic"
+	}
+}
+
 // Complete the authentication config applying defaults / overrides.
 func (c *AuthConfig) Complete() {
 	if len(c.Passphrase) == 0 && len(c.PrivateKeyPassphrase) > 0 {
 		zap.S().Warn("cloud-provider config: auth.key_passphrase is DEPRECIATED and will be removed in a later release. Please set auth.passphrase instead.")
 		c.Passphrase = c.PrivateKeyPassphrase
+	}
+	// Resolve PrivateKeyFile into PrivateKey when PrivateKey is not set directly.
+	if c.PrivateKey == "" && c.PrivateKeyFile != "" {
+		keyBytes, err := os.ReadFile(c.PrivateKeyFile)
+		if err != nil {
+			zap.S().Errorf("cloud-provider config: failed to read private key file %q: %v", c.PrivateKeyFile, err)
+		} else {
+			c.PrivateKey = string(keyBytes)
+			c.PrivateKeyFile = ""
+		}
 	}
 	if c.Region == "" || c.CompartmentID == "" {
 		meta, err := c.metadataSvc.Get()
@@ -196,6 +257,9 @@ func (c *AuthConfig) Complete() {
 func (c *Config) Complete() {
 	if c.LoadBalancer != nil {
 		c.LoadBalancer.Complete()
+	}
+	if c.IPAM != nil {
+		c.IPAM.Complete()
 	}
 	c.Auth.Complete()
 	// Ensure backwards compatibility fields are set correctly.
@@ -274,6 +338,29 @@ func NewConfigurationProvider(cfg *Config) (common.ConfigurationProvider, error)
 			cp, err := auth.InstancePrincipalConfigurationProvider()
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to instantiate InstancePrincipalConfigurationProvider")
+			}
+			return cp, nil
+		}
+
+		if cfg.UseWorkloadIdentity {
+			// OCI SDK requires specific, dynamic environment variables for workload identity.
+			if err := os.Setenv(auth.ResourcePrincipalVersionEnvVar, auth.ResourcePrincipalVersion2_2); err != nil {
+				return nil, fmt.Errorf("unable to set OCI SDK environment variable: %s: %w", auth.ResourcePrincipalVersionEnvVar, err)
+			}
+			if err := os.Setenv(auth.ResourcePrincipalRegionEnvVar, cfg.RegionKey); err != nil {
+				return nil, fmt.Errorf("unable to set OCI SDK environment variable: %s: %w", auth.ResourcePrincipalRegionEnvVar, err)
+			}
+			cp, err := auth.OkeWorkloadIdentityConfigurationProvider()
+			if err != nil {
+				return nil, fmt.Errorf("unable to load workload-identity auth method. %v", err)
+			}
+			return cp, nil
+		}
+
+		if ociConfigFile := os.Getenv("OCI_CONFIG_FILE"); ociConfigFile != "" {
+			cp, err := common.ConfigurationProviderFromFile(ociConfigFile, cfg.Auth.Passphrase)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load OCI config from %s: %w", ociConfigFile, err)
 			}
 			return cp, nil
 		}

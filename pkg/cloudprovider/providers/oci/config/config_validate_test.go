@@ -54,16 +54,34 @@ func TestValidateConfig(t *testing.T) {
 			in: &Config{
 				metadataSvc: metadata.NewMock(&metadata.InstanceMetadata{CompartmentID: "compartment"}),
 				Auth: AuthConfig{
-					metadataSvc:           metadata.NewMock(&metadata.InstanceMetadata{CompartmentID: "compartment"}),
-					UseInstancePrincipals: true,
-					TenancyID:             "not empty",
+					metadataSvc: metadata.NewMock(&metadata.InstanceMetadata{CompartmentID: "compartment"}),
+					TenancyID:   "not empty",
 				},
+				UseInstancePrincipals: true,
 				LoadBalancer: &LoadBalancerConfig{
 					Subnet1: "ocid1.tenancy.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 					Subnet2: "ocid1.subnet.oc1.phx.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				},
 			},
 			errs: field.ErrorList{},
+		}, {
+			name: "invalid with instance principals & workload identity",
+			in: &Config{
+				metadataSvc:           metadata.NewMock(&metadata.InstanceMetadata{CompartmentID: "compartment"}),
+				UseWorkloadIdentity:   true,
+				UseInstancePrincipals: true,
+				Auth: AuthConfig{
+					metadataSvc: metadata.NewMock(&metadata.InstanceMetadata{CompartmentID: "compartment"}),
+					TenancyID:   "not empty",
+				},
+				LoadBalancer: &LoadBalancerConfig{
+					Subnet1: "ocid1.tenancy.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Subnet2: "ocid1.subnet.oc1.phx.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				},
+			},
+			errs: field.ErrorList{
+				&field.Error{Type: field.ErrorTypeForbidden, BadValue: "", Field: "useWorkloadIdentity", Detail: "useWorkloadIdentity and useInstancePrincipals cannot be used together"},
+			},
 		}, {
 			name: "valid_with_non_default_security_list_management_mode",
 			in: &Config{

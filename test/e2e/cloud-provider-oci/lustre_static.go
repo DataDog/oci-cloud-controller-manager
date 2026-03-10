@@ -26,9 +26,9 @@ var _ = Describe("Lustre Static", func() {
 
 		It("Multiple Pods should be able consume same PVC and read, write to same file", func() {
 			pvcJig := framework.NewPVCTestJig(f.ClientSet, "csi-lustre-e2e-test")
-			pvVolumeAttributes := map[string]string{ "setupLnet": "true"}
+			pvVolumeAttributes := map[string]string{"setupLnet": "true"}
 			if setupF.LustreSubnetCidr != "" {
-				pvVolumeAttributes["lustreSubnetCidr"]= setupF.LustreSubnetCidr
+				pvVolumeAttributes["lustreSubnetCidr"] = setupF.LustreSubnetCidr
 			}
 
 			pv := pvcJig.CreatePVorFailLustre(f.Namespace.Name, setupF.LustreVolumeHandle, []string{}, pvVolumeAttributes)
@@ -55,9 +55,9 @@ var _ = Describe("Lustre Static", func() {
 
 			//LUSTRE
 			lusterPVCJig := framework.NewPVCTestJig(f.ClientSet, "csi-lustre-e2e-test")
-			pvVolumeAttributes := map[string]string{ "setupLnet": "true"}
+			pvVolumeAttributes := map[string]string{"setupLnet": "true"}
 			if setupF.LustreSubnetCidr != "" {
-				pvVolumeAttributes["lustreSubnetCidr"]= setupF.LustreSubnetCidr
+				pvVolumeAttributes["lustreSubnetCidr"] = setupF.LustreSubnetCidr
 			}
 			lustrePV := lusterPVCJig.CreatePVorFailLustre(f.Namespace.Name, setupF.LustreVolumeHandle, []string{}, pvVolumeAttributes)
 			lustrePVC := lusterPVCJig.CreateAndAwaitPVCOrFailStaticLustre(f.Namespace.Name, lustrePV.Name, "50Gi", nil)
@@ -72,9 +72,9 @@ var _ = Describe("Lustre Static", func() {
 		It("Create PV PVC and POD for CSI-Lustre with mount options", func() {
 			pvcJig := framework.NewPVCTestJig(f.ClientSet, "csi-lustre-e2e-test")
 			mountOptions := []string{"flock"}
-			pvVolumeAttributes := map[string]string{ "setupLnet": "true"}
+			pvVolumeAttributes := map[string]string{"setupLnet": "true"}
 			if setupF.LustreSubnetCidr != "" {
-				pvVolumeAttributes["lustreSubnetCidr"]= setupF.LustreSubnetCidr
+				pvVolumeAttributes["lustreSubnetCidr"] = setupF.LustreSubnetCidr
 			}
 
 			pv := pvcJig.CreatePVorFailLustre(f.Namespace.Name, setupF.LustreVolumeHandle, mountOptions, pvVolumeAttributes)
@@ -85,7 +85,7 @@ var _ = Describe("Lustre Static", func() {
 
 		It("Create PV PVC and POD for CSI-Lustre with lustre post mount parameters", func() {
 			pvcJig := framework.NewPVCTestJig(f.ClientSet, "csi-lustre-e2e-test")
-			pvVolumeAttributes := map[string]string{ "setupLnet": "true", "lustrePostMountParameters" : "[{\"*.*.*MDT*.lru_size\" : 11201}]"}
+			pvVolumeAttributes := map[string]string{"setupLnet": "true", "lustrePostMountParameters": "[{\"*.*.*MDT*.lru_size\" : 11201}]"}
 
 			pv := pvcJig.CreatePVorFailLustre(f.Namespace.Name, setupF.LustreVolumeHandle, []string{}, pvVolumeAttributes)
 			pvc := pvcJig.CreateAndAwaitPVCOrFailStaticLustre(f.Namespace.Name, pv.Name, "50Gi", nil)
@@ -98,9 +98,9 @@ var _ = Describe("Lustre Static", func() {
 		It("Verify volume group ownership change for Lustre when fsGroup is defined", func() {
 			pvcJig := framework.NewPVCTestJig(f.ClientSet, "csi-lustre-e2e-test")
 
-			pvVolumeAttributes := map[string]string{ "setupLnet": "true"}
+			pvVolumeAttributes := map[string]string{"setupLnet": "true"}
 			if setupF.LustreSubnetCidr != "" {
-				pvVolumeAttributes["lustreSubnetCidr"]= setupF.LustreSubnetCidr
+				pvVolumeAttributes["lustreSubnetCidr"] = setupF.LustreSubnetCidr
 			}
 
 			pv := pvcJig.CreatePVorFailLustre(f.Namespace.Name, setupF.LustreVolumeHandle, []string{}, pvVolumeAttributes)

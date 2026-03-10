@@ -87,7 +87,6 @@ const (
 	RawBlockStagingFile = "mountfile"
 
 	AvailabilityDomainLabel = "csi-ipv6-full-ad-name"
-
 )
 
 // Util interface
@@ -117,15 +116,14 @@ type NodeMetadata struct {
 
 // CSIConfig represents the structure of the ConfigMap data.
 type CSIConfig struct {
-	Lustre *DriverConfig `yaml:"lustre"`
+	Lustre   *DriverConfig `yaml:"lustre"`
 	IsLoaded bool
 }
 
 // DriverConfig represents driver-specific configurations.
 type DriverConfig struct {
-	SkipNodeUnstage bool `yaml:"skipNodeUnstage"`
+	SkipNodeUnstage      bool `yaml:"skipNodeUnstage"`
 	SkipLustreParameters bool `yaml:"skipLustreParameters"`
-
 }
 
 func (u *Util) LookupNodeID(k kubernetes.Interface, nodeName string) (string, error) {
@@ -144,14 +142,14 @@ func (u *Util) LookupNodeID(k kubernetes.Interface, nodeName string) (string, er
 
 func (u *Util) WaitForKubeApiServerToBeReachableWithContext(ctx context.Context, k kubernetes.Interface, backOffCap time.Duration) {
 
-	waitForKubeApiServerCtx, waitForKubeApiServerCtxCancel := context.WithTimeout(ctx, time.Second * 45)
+	waitForKubeApiServerCtx, waitForKubeApiServerCtxCancel := context.WithTimeout(ctx, time.Second*45)
 	defer waitForKubeApiServerCtxCancel()
 
 	backoff := wait.Backoff{
 		Duration: 1 * time.Second,
 		Factor:   2.0,
 		Steps:    5,
-		Cap: backOffCap,
+		Cap:      backOffCap,
 	}
 
 	wait.ExponentialBackoffWithContext(
@@ -171,9 +169,9 @@ func (u *Util) WaitForKubeApiServerToBeReachableWithContext(ctx context.Context,
 	)
 }
 
-func (u *Util) LoadNodeMetadataFromApiServer(ctx context.Context, k kubernetes.Interface, nodeID string, nodeMetadata *NodeMetadata) (error) {
+func (u *Util) LoadNodeMetadataFromApiServer(ctx context.Context, k kubernetes.Interface, nodeID string, nodeMetadata *NodeMetadata) error {
 
-	u.WaitForKubeApiServerToBeReachableWithContext(ctx, k, time.Second * 30)
+	u.WaitForKubeApiServerToBeReachableWithContext(ctx, k, time.Second*30)
 
 	node, err := k.CoreV1().Nodes().Get(ctx, nodeID, metav1.GetOptions{})
 
@@ -210,7 +208,7 @@ func (u *Util) LoadNodeMetadataFromApiServer(ctx context.Context, k kubernetes.I
 		u.Logger.With("nodeId", nodeID, "nodeMetadata", nodeMetadata).Info("Node IP family identified.")
 	}
 	nodeMetadata.IsNodeMetadataLoaded = true
-	return  nil
+	return nil
 }
 
 // waitForPathToExist waits for for a given filesystem path to exist.
@@ -652,7 +650,7 @@ func LoadCSIConfigFromConfigMap(csiConfig *CSIConfig, k kubernetes.Interface, co
 
 	if lustreConfig, exists := cm.Data["lustre"]; exists {
 		if err := yaml.Unmarshal([]byte(lustreConfig), &csiConfig.Lustre); err != nil {
-			logger.Debugf("Failed to parse lustre key in config map %v. Error: %v",configMapName,  err)
+			logger.Debugf("Failed to parse lustre key in config map %v. Error: %v", configMapName, err)
 			return
 		}
 		logger.Infof("Successfully loaded ConfigMap %v. Using customized configuration for csi driver.", configMapName)
