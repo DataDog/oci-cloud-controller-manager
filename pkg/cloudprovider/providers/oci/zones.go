@@ -57,10 +57,10 @@ func (cp *CloudProvider) GetZoneByProviderID(ctx context.Context, providerID str
 		return cloudprovider.Zone{}, errors.Wrap(err, "Error fetching instance from instanceCache, will retry")
 	}
 	if exists {
-		return cloudprovider.Zone{
-			FailureDomain: mapAvailabilityDomainToFailureDomain(*item.(*core.Instance).AvailabilityDomain),
-			Region:        *item.(*core.Instance).Region,
-		}, nil
+		return cp.makeZone(
+			mapAvailabilityDomainToFailureDomain(*item.(*core.Instance).AvailabilityDomain),
+			*item.(*core.Instance).Region,
+		), nil
 	}
 	instance, err := cp.client.Compute().GetInstance(ctx, instanceID)
 	if err != nil {
@@ -69,10 +69,10 @@ func (cp *CloudProvider) GetZoneByProviderID(ctx context.Context, providerID str
 	if err := cp.instanceCache.Add(instance); err != nil {
 		return cloudprovider.Zone{}, errors.Wrap(err, "Failed to add instance in instanceCache")
 	}
-	return cloudprovider.Zone{
-		FailureDomain: mapAvailabilityDomainToFailureDomain(*instance.AvailabilityDomain),
-		Region:        *instance.Region,
-	}, nil
+	return cp.makeZone(
+		mapAvailabilityDomainToFailureDomain(*instance.AvailabilityDomain),
+		*instance.Region,
+	), nil
 }
 
 // GetZoneByNodeName returns the Zone containing the current zone and locality
@@ -88,8 +88,19 @@ func (cp *CloudProvider) GetZoneByNodeName(ctx context.Context, nodeName types.N
 	if err != nil {
 		return cloudprovider.Zone{}, err
 	}
+	return cp.makeZone(
+		mapAvailabilityDomainToFailureDomain(*instance.AvailabilityDomain),
+		*instance.Region,
+	), nil
+}
+
+func (cp *CloudProvider) makeZone(failureDomain, region string) cloudprovider.Zone {
+	if cp.config.LowercaseTopologyValues {
+		failureDomain = strings.ToLower(failureDomain)
+		region = strings.ToLower(region)
+	}
 	return cloudprovider.Zone{
-		FailureDomain: mapAvailabilityDomainToFailureDomain(*instance.AvailabilityDomain),
-		Region:        *instance.Region,
-	}, nil
+		FailureDomain: failureDomain,
+		Region:        region,
+	}
 }

@@ -163,6 +163,9 @@ func (nic *NodeInfoController) processItem(key string) error {
 
 	// if node has required labels already, don't process agin
 	if validateNodeHasRequiredLabels(cacheNode) {
+		if nic.cloud.config.LowercaseTopologyValues {
+			return nic.enforceTopologyLowercase(cacheNode, logger)
+		}
 		logger.With("nodeName", cacheNode.Name).Debugf("The node has the fault domain label and compartmentID annotation already, will not process")
 		return nil
 	}
@@ -177,7 +180,7 @@ func (nic *NodeInfoController) processItem(key string) error {
 		return err
 	}
 
-	nodePatchBytes := getNodePatchBytes(cacheNode, instance, logger)
+	nodePatchBytes := getNodePatchBytes(cacheNode, instance, nic.cloud.config.LowercaseTopologyValues, logger)
 
 	if nodePatchBytes == nil {
 		return nil
@@ -195,7 +198,7 @@ func (nic *NodeInfoController) processItem(key string) error {
 	return nil
 }
 
-func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.SugaredLogger) []byte {
+func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, lowercaseTopology bool, logger *zap.SugaredLogger) []byte {
 	if validateNodeHasRequiredLabels(cacheNode) {
 		return nil
 	}
@@ -205,6 +208,11 @@ func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.
 
 	//labels only allow ., -, _ special characters
 	availabilityDomainLabelValue := strings.ReplaceAll(*instance.AvailabilityDomain, ":", ".")
+	faultDomainValue := *instance.FaultDomain
+	if lowercaseTopology {
+		availabilityDomainLabelValue = strings.ToLower(availabilityDomainLabelValue)
+		faultDomainValue = strings.ToLower(faultDomainValue)
+	}
 
 	var nodePatchBytes []byte
 	if isFaultDomainLabelPresent && (!client.IsIpv6SingleStackCluster() || isAvailabilityDomainLabelPresent) {
@@ -214,27 +222,27 @@ func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.
 			CompartmentIDAnnotation, *instance.CompartmentId))
 	} else if isCompartmentIDAnnotationPresent {
 		//In this case FaultDomainLabel not present but CompartmentIDAnnotation present
-		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, *instance.FaultDomain)
+		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, faultDomainValue)
 		if client.IsIpv6SingleStackCluster() {
 			logger.Infof("Adding node label from cloud provider: %s=%s", AvailabilityDomainLabel, availabilityDomainLabelValue)
-			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"}}}", FaultDomainLabel, *instance.FaultDomain,
+			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"}}}", FaultDomainLabel, faultDomainValue,
 				AvailabilityDomainLabel, availabilityDomainLabelValue))
 		} else {
-			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"}}}", FaultDomainLabel, *instance.FaultDomain))
+			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"}}}", FaultDomainLabel, faultDomainValue))
 		}
 
 	} else {
 		//In this case none of FaultDomainLabel or CompartmentIDAnnotation present
-		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, *instance.FaultDomain)
+		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, faultDomainValue)
 		logger.Infof("Adding node annotation from cloud provider: %s=%s", CompartmentIDAnnotation, *instance.CompartmentId)
 
 		if client.IsIpv6SingleStackCluster() {
 			logger.Infof("Adding node label from cloud provider: %s=%s", AvailabilityDomainLabel, availabilityDomainLabelValue)
 			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"},\"annotations\": {\"%s\":\"%s\"}}}",
-				FaultDomainLabel, *instance.FaultDomain, AvailabilityDomainLabel, availabilityDomainLabelValue, CompartmentIDAnnotation, *instance.CompartmentId))
+				FaultDomainLabel, faultDomainValue, AvailabilityDomainLabel, availabilityDomainLabelValue, CompartmentIDAnnotation, *instance.CompartmentId))
 		} else {
 			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"},\"annotations\": {\"%s\":\"%s\"}}}",
-				FaultDomainLabel, *instance.FaultDomain, CompartmentIDAnnotation, *instance.CompartmentId))
+				FaultDomainLabel, faultDomainValue, CompartmentIDAnnotation, *instance.CompartmentId))
 		}
 	}
 	return nodePatchBytes
@@ -265,6 +273,49 @@ func getInstanceByNode(cacheNode *v1.Node, nic *NodeInfoController, logger *zap.
 		return nil, err
 	}
 	return instance, nil
+}
+
+var topologyLabels = []string{
+	v1.LabelTopologyZone,
+	v1.LabelFailureDomainBetaZone,
+	v1.LabelTopologyRegion,
+	v1.LabelFailureDomainBetaRegion,
+}
+
+func (nic *NodeInfoController) enforceTopologyLowercase(node *v1.Node, logger *zap.SugaredLogger) error {
+	patches := map[string]string{}
+	for _, key := range topologyLabels {
+		val, ok := node.ObjectMeta.Labels[key]
+		if !ok {
+			continue
+		}
+		lower := strings.ToLower(val)
+		if val != lower {
+			patches[key] = lower
+		}
+	}
+	if len(patches) == 0 {
+		return nil
+	}
+
+	patchJSON := "{\"metadata\":{\"labels\":{"
+	first := true
+	for k, v := range patches {
+		if !first {
+			patchJSON += ","
+		}
+		patchJSON += fmt.Sprintf("\"%s\":\"%s\"", k, v)
+		first = false
+		logger.Infof("Enforcing lowercase topology label: %s=%s", k, v)
+	}
+	patchJSON += "}}}"
+
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		_, err := nic.kubeClient.CoreV1().Nodes().Patch(
+			context.Background(), node.Name, types.StrategicMergePatchType,
+			[]byte(patchJSON), metav1.PatchOptions{})
+		return err
+	})
 }
 
 func validateNodeHasRequiredLabels(node *v1.Node) bool {

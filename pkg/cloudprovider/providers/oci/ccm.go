@@ -136,6 +136,10 @@ func NewCloudProvider(config *providercfg.Config) (cloudprovider.Interface, erro
 		logger.Info("Metrics collection has not been enabled")
 	}
 
+	if config.LowercaseTopologyValues {
+		logger.Info("Topology label values will be lowercased")
+	}
+
 	return &CloudProvider{
 		client:        c,
 		config:        config,
