@@ -222,7 +222,7 @@ func TestGetNodePatchBytes(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			os.Setenv("CLUSTER_IP_FAMILY", tc.clusterIpFamily)
-			patchedBytes := getNodePatchBytes(tc.node, tc.instance, logger.Sugar())
+			patchedBytes := getNodePatchBytes(tc.node, tc.instance, false, logger.Sugar())
 			if !reflect.DeepEqual(patchedBytes, tc.expectedPatchBytes) {
 				t.Errorf("Expected PatchBytes \n%+v\nbut got\n%+v", tc.expectedPatchBytes, patchedBytes)
 			}

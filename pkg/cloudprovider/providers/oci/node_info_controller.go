@@ -177,7 +177,7 @@ func (nic *NodeInfoController) processItem(key string) error {
 		return err
 	}
 
-	nodePatchBytes := getNodePatchBytes(cacheNode, instance, logger)
+	nodePatchBytes := getNodePatchBytes(cacheNode, instance, nic.cloud.config.LowercaseTopologyValues, logger)
 
 	if nodePatchBytes == nil {
 		return nil
@@ -195,7 +195,7 @@ func (nic *NodeInfoController) processItem(key string) error {
 	return nil
 }
 
-func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.SugaredLogger) []byte {
+func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, lowercaseTopology bool, logger *zap.SugaredLogger) []byte {
 	if validateNodeHasRequiredLabels(cacheNode) {
 		return nil
 	}
@@ -205,6 +205,11 @@ func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.
 
 	//labels only allow ., -, _ special characters
 	availabilityDomainLabelValue := strings.ReplaceAll(*instance.AvailabilityDomain, ":", ".")
+	faultDomainValue := *instance.FaultDomain
+	if lowercaseTopology {
+		availabilityDomainLabelValue = strings.ToLower(availabilityDomainLabelValue)
+		faultDomainValue = strings.ToLower(faultDomainValue)
+	}
 
 	var nodePatchBytes []byte
 	if isFaultDomainLabelPresent && (!client.IsIpv6SingleStackCluster() || isAvailabilityDomainLabelPresent) {
@@ -214,27 +219,27 @@ func getNodePatchBytes(cacheNode *v1.Node, instance *core.Instance, logger *zap.
 			CompartmentIDAnnotation, *instance.CompartmentId))
 	} else if isCompartmentIDAnnotationPresent {
 		//In this case FaultDomainLabel not present but CompartmentIDAnnotation present
-		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, *instance.FaultDomain)
+		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, faultDomainValue)
 		if client.IsIpv6SingleStackCluster() {
 			logger.Infof("Adding node label from cloud provider: %s=%s", AvailabilityDomainLabel, availabilityDomainLabelValue)
-			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"}}}", FaultDomainLabel, *instance.FaultDomain,
+			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"}}}", FaultDomainLabel, faultDomainValue,
 				AvailabilityDomainLabel, availabilityDomainLabelValue))
 		} else {
-			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"}}}", FaultDomainLabel, *instance.FaultDomain))
+			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"}}}", FaultDomainLabel, faultDomainValue))
 		}
 
 	} else {
 		//In this case none of FaultDomainLabel or CompartmentIDAnnotation present
-		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, *instance.FaultDomain)
+		logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, faultDomainValue)
 		logger.Infof("Adding node annotation from cloud provider: %s=%s", CompartmentIDAnnotation, *instance.CompartmentId)
 
 		if client.IsIpv6SingleStackCluster() {
 			logger.Infof("Adding node label from cloud provider: %s=%s", AvailabilityDomainLabel, availabilityDomainLabelValue)
 			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\",\"%s\":\"%s\"},\"annotations\": {\"%s\":\"%s\"}}}",
-				FaultDomainLabel, *instance.FaultDomain, AvailabilityDomainLabel, availabilityDomainLabelValue, CompartmentIDAnnotation, *instance.CompartmentId))
+				FaultDomainLabel, faultDomainValue, AvailabilityDomainLabel, availabilityDomainLabelValue, CompartmentIDAnnotation, *instance.CompartmentId))
 		} else {
 			nodePatchBytes = []byte(fmt.Sprintf("{\"metadata\": {\"labels\": {\"%s\":\"%s\"},\"annotations\": {\"%s\":\"%s\"}}}",
-				FaultDomainLabel, *instance.FaultDomain, CompartmentIDAnnotation, *instance.CompartmentId))
+				FaultDomainLabel, faultDomainValue, CompartmentIDAnnotation, *instance.CompartmentId))
 		}
 	}
 	return nodePatchBytes
