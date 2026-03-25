@@ -186,6 +186,10 @@ type Config struct {
 	// cluster resides.
 	VCNID string `yaml:"vcn"`
 
+	// LowercaseTopologyValues lowercases the values of topology labels
+	// (region, availability domain, fault domain) before applying them to nodes.
+	LowercaseTopologyValues bool `yaml:"lowercaseTopologyValues"`
+
 	// Metadata service to help fill in certain fields
 	metadataSvc metadata.Interface
 }
