@@ -163,6 +163,9 @@ func (nic *NodeInfoController) processItem(key string) error {
 
 	// if node has required labels already, don't process agin
 	if validateNodeHasRequiredLabels(cacheNode) {
+		if nic.cloud.config.LowercaseTopologyValues {
+			return nic.enforceTopologyLowercase(cacheNode, logger)
+		}
 		logger.With("nodeName", cacheNode.Name).Debugf("The node has the fault domain label and compartmentID annotation already, will not process")
 		return nil
 	}
@@ -270,6 +273,49 @@ func getInstanceByNode(cacheNode *v1.Node, nic *NodeInfoController, logger *zap.
 		return nil, err
 	}
 	return instance, nil
+}
+
+var topologyLabels = []string{
+	v1.LabelTopologyZone,
+	v1.LabelFailureDomainBetaZone,
+	v1.LabelTopologyRegion,
+	v1.LabelFailureDomainBetaRegion,
+}
+
+func (nic *NodeInfoController) enforceTopologyLowercase(node *v1.Node, logger *zap.SugaredLogger) error {
+	patches := map[string]string{}
+	for _, key := range topologyLabels {
+		val, ok := node.ObjectMeta.Labels[key]
+		if !ok {
+			continue
+		}
+		lower := strings.ToLower(val)
+		if val != lower {
+			patches[key] = lower
+		}
+	}
+	if len(patches) == 0 {
+		return nil
+	}
+
+	patchJSON := "{\"metadata\":{\"labels\":{"
+	first := true
+	for k, v := range patches {
+		if !first {
+			patchJSON += ","
+		}
+		patchJSON += fmt.Sprintf("\"%s\":\"%s\"", k, v)
+		first = false
+		logger.Infof("Enforcing lowercase topology label: %s=%s", k, v)
+	}
+	patchJSON += "}}}"
+
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		_, err := nic.kubeClient.CoreV1().Nodes().Patch(
+			context.Background(), node.Name, types.StrategicMergePatchType,
+			[]byte(patchJSON), metav1.PatchOptions{})
+		return err
+	})
 }
 
 func validateNodeHasRequiredLabels(node *v1.Node) bool {
