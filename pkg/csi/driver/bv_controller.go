@@ -522,6 +522,11 @@ func (d *BlockVolumeControllerDriver) CreateVolume(ctx context.Context, req *csi
 	volumeContext[attachmentType] = volumeParams.attachmentParameter[attachmentType]
 	volumeContext[csi_util.VpusPerGB] = strconv.FormatInt(volumeParams.vpusPerGB, 10)
 
+	topologyZone := d.util.GetAvailableDomainInNodeLabel(*provisionedVolume.AvailabilityDomain)
+	if d.config != nil && d.config.LowercaseTopologyValues {
+		topologyZone = strings.ToLower(topologyZone)
+	}
+
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      *provisionedVolume.Id,
@@ -529,12 +534,12 @@ func (d *BlockVolumeControllerDriver) CreateVolume(ctx context.Context, req *csi
 			AccessibleTopology: []*csi.Topology{
 				{
 					Segments: map[string]string{
-						kubeAPI.LabelTopologyZone: d.util.GetAvailableDomainInNodeLabel(*provisionedVolume.AvailabilityDomain),
+						kubeAPI.LabelTopologyZone: topologyZone,
 					},
 				},
 				{
 					Segments: map[string]string{
-						kubeAPI.LabelZoneFailureDomain: d.util.GetAvailableDomainInNodeLabel(*provisionedVolume.AvailabilityDomain),
+						kubeAPI.LabelZoneFailureDomain: topologyZone,
 					},
 				},
 			},
